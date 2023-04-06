@@ -1,0 +1,264 @@
+import { promises } from 'fs'
+import { join } from 'path'
+import { xpRange } from '../lib/levelling.js'
+import moment from 'moment-timezone'
+import fs from 'fs'
+let tags = {
+  'main': 'Main',
+  'rpg': 'Epic RPG',
+  'game': 'Game',
+  'xp': 'Exp & Limit',
+  'sticker': 'Sticker',
+  'kerang': 'Kerang Ajaib',
+  'quotes': 'Quotes',
+  'admin': 'Admin',
+  'group': 'Group',
+  'premium': 'Premium',
+  'internet': 'Internet',
+  'anonymous': 'Anonymous Chat',
+  'nulis': 'MagerNulis & Logo',
+  'downloader': 'Downloader',
+  'tools': 'Tools',
+  'fun': 'Fun',
+  'database': 'Database',
+  'vote': 'Voting',
+  'absen': 'Absen',
+  'quran': 'Al Qur\'an',
+  'jadibot': 'Jadi Bot',
+  'owner': 'Owner',
+  'host': 'Host',
+  'advanced': 'Advanced',
+  'info': 'Info',
+  '': 'No Category',
+}
+const defaultMenu = { 
+before: ` 
+ıll *USER* 
+•👋 Hai, %name! 
+
+•📝 Tersisa *%limit Limit* 
+•🎯 Role *%role* 
+•🎚️ Level *%level (%exp / %maxexp)* 
+•✨ [%xp4levelup] 
+•🏆 %totalexp XP secara Total 
+
+ıll *TODAY* 
+•☁️Hari: %week %weton
+•🕛Wib: %wib
+•🕛Wit: %wit
+•🕛Wita: %wita
+%readmore`.trimStart(),
+  header: '%category',
+  body: '•▶︎ %cmd %islimit %isPremium',
+  after: `  ${'```✨ʜᴏᴩᴇ ʏᴏᴜ ᴇɴᴊᴏʏɪɴɢ ᴛʜᴇ ʙᴏᴛ✨```'}`,
+}
+let handler = async (m, { conn, usedPrefix, __dirname }) => {
+  try {
+    let { exp, limit, level, role } = db.data.users[m.sender]
+    const multiplier = 100
+    let ppbot = await conn.profilePictureUrl(conn.user.jid, 'image').catch((_) => "https://telegra.ph/file/24fa902ead26340f3df2c.png")
+    let _package = JSON.parse(await promises.readFile(join(__dirname, '../package.json')).catch(_ => ({}))) || {}
+    let { min, xp, max } = xpRange(level, global.multiplier)
+    let name = await conn.getName(m.sender)
+    let d = new Date(new Date + 3600000)
+    let locale = 'id'
+    // d.getTimeZoneOffset()
+    // Offset -420 is 18.00
+    // Offset    0 is  0.00
+    // Offset  420 is  7.00
+    const wib = moment.tz('Asia/Jakarta').format("HH:mm:ss")
+    const wita = moment.tz('Asia/Makassar').format("HH:mm:ss")
+    const wit = moment.tz('Asia/Jayapura').format("HH:mm:ss")
+    let weton = ['Pahing', 'Pon', 'Wage', 'Kliwon', 'Legi'][Math.floor(d / 84600000) % 5]
+    let week = d.toLocaleDateString(locale, { weekday: 'long' })
+    let date = d.toLocaleDateString(locale, {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    })
+    let dateIslamic = Intl.DateTimeFormat(locale + '-TN-u-ca-islamic', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).format(d)
+    let time = d.toLocaleTimeString(locale, {
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric'
+    })
+    let _uptime = process.uptime() * 1000
+    let _muptime
+    if (process.send) {
+      process.send('uptime')
+      _muptime = await new Promise(resolve => {
+        process.once('message', resolve)
+        setTimeout(resolve, 1000)
+      }) * 1000
+    }
+    let muptime = clockString(_muptime)
+    let uptime = clockString(_uptime)
+    let totalreg = Object.keys(db.data.users).length
+    let rtotalreg = Object.values(db.data.users).filter(user => user.registered == true).length
+    let help = Object.values(plugins).filter(plugin => !plugin.disabled).map(plugin => {
+      return {
+        help: Array.isArray(plugin.tags) ? plugin.help : [plugin.help],
+        tags: Array.isArray(plugin.tags) ? plugin.tags : [plugin.tags],
+        prefix: 'customPrefix' in plugin,
+        limit: plugin.limit,
+        premium: plugin.premium,
+        enabled: !plugin.disabled,
+      }
+    })
+    for (let plugin of help)
+      if (plugin && 'tags' in plugin)
+        for (let tag of plugin.tags)
+          if (!(tag in tags) && tag) tags[tag] = tag
+    conn.menu = conn.menu ? conn.menu : {}
+    let before = conn.menu.before || defaultMenu.before
+    let header = conn.menu.header || defaultMenu.header
+    let body = conn.menu.body || defaultMenu.body
+    let footer = conn.menu.footer || defaultMenu.footer
+    let after = conn.menu.after || (conn.user.jid == conn.user.jid ? '' : `Powered by https://wa.me/${conn.user.jid.split`@`[0]}`) + defaultMenu.after
+    let _text = [
+      before,
+      ...Object.keys(tags).map(tag => {
+        return header.replace(/%category/g, tags[tag]) + '\n' + [
+          ...help.filter(menu => menu.tags && menu.tags.includes(tag) && menu.help).map(menu => {
+            return menu.help.map(help => {
+              return body.replace(/%cmd/g, menu.prefix ? help : '%p' + help)
+                .replace(/%islimit/g, menu.limit ? '(Ⓛ)' : '')
+                .replace(/%isPremium/g, menu.premium ? '(Ⓟ)' : '')
+                .trim()
+            }).join('\n')
+          }),
+          footer
+        ].join('\n')
+      }),
+      after
+    ].join('\n')
+    const taxt = typeof conn.menu == 'string' ? conn.menu : typeof conn.menu == 'object' ? _text : ''
+    let replace = {
+      '%': '%',
+      p: usedPrefix, uptime, muptime,
+      me: conn.getName(conn.user.jid),
+      ucapan: ucapan(),
+      npmname: _package.name,
+      npmdesc: _package.description,
+      version: _package.version,
+      exp: exp - min,
+      maxexp: xp,
+      totalexp: exp,
+      xp4levelup: max - exp,
+      github: _package.homepage ? _package.homepage.url || _package.homepage : '[unknown github url]',
+      level, limit, name, weton, week, date, dateIslamic, wib, wit, wita, time, totalreg, rtotalreg, role,
+      readmore: readMore
+    }
+    const text = taxt.replace(new RegExp(`%(${Object.keys(replace).sort((a, b) => b.length - a.length).join`|`})`, 'g'), (_, name) => '' + replace[name])
+    let link = 'https://chat.whatsapp.com/DPh1lCsR1lHCACgBKVpiJZ'
+    let gambar = 'https://telegra.ph/file/003d9dd7441c68263bd95.jpg'
+   conn.sendButton(m.chat, text.trim(), `${timeimg()}`, [["D O N A S I ", ".donasi"],["O W N E R",".owner"], ["R U L E S", ".rules"]], m, { asLocation: true })
+  } catch (e) {
+    conn.reply(m.chat, 'Maaf, menu sedang error', m)
+    throw e
+  }
+}
+handler.help = ['menu']
+handler.tags = ['main']
+handler.command = /^(menu|help|valor|command|commands)$/i
+
+handler.exp = 3
+
+export default handler
+
+const more = String.fromCharCode(8206)
+const readMore = more.repeat(4001)
+
+function clockString(ms) {
+  let h = isNaN(ms) ? '--' : Math.floor(ms / 3600000)
+  let m = isNaN(ms) ? '--' : Math.floor(ms / 60000) % 60
+  let s = isNaN(ms) ? '--' : Math.floor(ms / 1000) % 60
+  return [h, m, s].map(v => v.toString().padStart(2, 0)).join(':')
+}
+
+function wish() {
+    let wishloc = ''
+  const time = moment.tz('Asia/Kolkata').format('HH')
+  wishloc = ('Hi')
+  if (time >= 0) {
+    wishloc = ('Night Rider')
+  }
+  if (time >= 4) {
+    wishloc = ('Good Morning')
+  }
+  if (time >= 12) {
+    wishloc = ('Good Afternoon')
+  }
+  if (time >= 16) {
+    wishloc = ('️Good Evening')
+  }
+  if (time >= 23) {
+    wishloc = ('Night Rider')
+  }
+  return wishloc
+}
+function timeimg() {
+    let imgloc = ''
+  const time = moment.tz('Asia/Kolkata').format('HH')
+  imgloc = ('./media/menu.jpg')
+  if (time >= 0) {
+    imgloc = ('./media/midnight.jpg')
+  }
+  if (time >= 1) {
+    imgloc = ('./media/aftermid.jpg')
+  }
+  if (time >= 4) {
+    imgloc = ('./media/morning.jpg')
+  }
+  if (time >= 5) {
+    imgloc = ('./media/dawn.jpg')
+  }
+  if (time >= 6) {
+    imgloc = ('./media/sunrise.jpg')
+  }
+  if (time >= 7) {
+    imgloc = ('./media/day.jpg')
+  }
+  if (time >= 12) {
+    imgloc = ('./media/noon.jpg')
+  }
+  if (time >= 14) {
+    imgloc = ('./media/afternoon.jpg')
+  }
+  if (time >= 16) {
+    imgloc = ('./media/evening.jpg')
+  }
+  if (time >= 18) {
+    imgloc = ('./media/sunset.jpg')
+  }
+  if (time >= 19) {
+    imgloc = ('./media/dusk.jpg')
+  }
+  if (time >= 20) {
+    imgloc = ('./media/night.jpg')
+  }
+  return imgloc
+}
+
+function ucapan() {
+        const hour_now = moment.tz('Asia/Jakarta').format('HH')
+        var ucapanWaktu = 'Pagi kak'
+        if (hour_now >= '03' && hour_now <= '10') {
+          ucapanWaktu = 'Pagi kak'
+        } else if (hour_now >= '10' && hour_now <= '15') {
+          ucapanWaktu = 'Siang kak'
+        } else if (hour_now >= '15' && hour_now <= '17') {
+          ucapanWaktu = 'Sore kak'
+        } else if (hour_now >= '17' && hour_now <= '18') {
+          ucapanWaktu = 'Selamat Petang kak'
+        } else if (hour_now >= '18' && hour_now <= '23') {
+          ucapanWaktu = 'Malam kak'
+        } else {
+          ucapanWaktu = 'Selamat Malam!'
+        }	
+        return ucapanWaktu
+}
